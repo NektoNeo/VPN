@@ -14,8 +14,8 @@
 
 import type {IncomingMessage} from 'http';
 import * as https from 'https';
-import {connect} from 'tls';
 import {isIP} from 'net';
+import {connect} from 'tls';
 import {urlToHttpOptions} from 'url';
 
 import type {HttpRequest, HttpResponse} from '@outline/infrastructure/path_api';

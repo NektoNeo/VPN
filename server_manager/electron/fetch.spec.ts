@@ -43,9 +43,7 @@ describe('fetchWithPin', () => {
     const server = https.createServer({key: keyPem, cert: certPem}, () =>
       fail('HTTP reached a server with the wrong pin')
     );
-    await new Promise<void>((resolve) =>
-      server.listen(0, '127.0.0.1', resolve)
-    );
+    await new Promise<void>(resolve => server.listen(0, '127.0.0.1', resolve));
     const {port} = server.address() as AddressInfo;
     try {
       const result = fetchWithPin(
@@ -57,15 +55,13 @@ describe('fetchWithPin', () => {
         /Fingerprint mismatch/
       );
     } finally {
-      await new Promise<void>((resolve) => server.close(() => resolve()));
+      await new Promise<void>(resolve => server.close(() => resolve()));
     }
   });
 
   it('succeeds on pin match', async () => {
     const server = https.createServer({key: keyPem, cert: certPem});
-    await new Promise<void>((fulfill) =>
-      server.listen(0, '127.0.0.1', fulfill)
-    );
+    await new Promise<void>(fulfill => server.listen(0, '127.0.0.1', fulfill));
 
     const address = server.address() as AddressInfo;
     const req = {
@@ -87,7 +83,7 @@ describe('fetchWithPin', () => {
         body: 'test test',
       });
     } finally {
-      await new Promise<void>((resolve) => server.close(() => resolve()));
+      await new Promise<void>(resolve => server.close(() => resolve()));
     }
   });
 });

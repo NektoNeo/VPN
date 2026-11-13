@@ -16,8 +16,8 @@ import {hexToString} from '@outline/infrastructure/hex_encoding';
 
 import {makePathApiClient} from './fetcher';
 import {ManualServerStore, newManualServerId} from './manual_server_store';
-import type {StoredManualServer} from '../model/manual_server_storage';
 import {ShadowboxServer} from './shadowbox_server';
+import type {StoredManualServer} from '../model/manual_server_storage';
 import * as server from '../model/server';
 
 class ManualServer extends ShadowboxServer implements server.ManualServer {

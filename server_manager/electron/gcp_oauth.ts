@@ -57,7 +57,7 @@ async function verifyGrantedScopes(
   const getTokenInfoResponse = await oAuthClient.getTokenInfo(accessToken);
   for (const requiredScope of OAUTH_CONFIG.scopes) {
     const matchedScope = getTokenInfoResponse.scopes.find(
-      (grantedScope) => grantedScope === requiredScope
+      grantedScope => grantedScope === requiredScope
     );
     if (!matchedScope) {
       return false;
@@ -156,7 +156,7 @@ export function runOauth(): OauthSession {
                 )
               );
             }
-          } catch (error) {
+          } catch {
             response.send(responseHtml('Authentication failed'));
             reject(
               new Error(
@@ -172,7 +172,7 @@ export function runOauth(): OauthSession {
         access_type: 'offline',
         scope: OAUTH_CONFIG.scopes,
       });
-      electron.shell.openExternal(oAuthUrl).catch((error) => {
+      electron.shell.openExternal(oAuthUrl).catch(error => {
         server.close();
         reject(error);
       });

@@ -60,7 +60,7 @@ if (typeof SENTRY_DSN !== 'undefined' && SENTRY_DSN) {
 console.info('Outline Manager is starting');
 
 interface IpcEvent {
-  returnValue: {};
+  returnValue: unknown;
 }
 
 function createMainWindow() {
