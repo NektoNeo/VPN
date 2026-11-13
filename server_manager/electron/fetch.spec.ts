@@ -15,26 +15,14 @@
 import * as crypto from 'crypto';
 import * as https from 'https';
 import {AddressInfo} from 'net';
-import * as tls from 'tls';
 
 import * as forge from 'node-forge';
 
 import {fetchWithPin} from './fetch';
 
 describe('fetchWithPin', () => {
-  it('throws on pin mismatch (remote)', async () => {
-    const result = fetchWithPin(
-      {url: 'https://www.gstatic.com/', method: 'GET'},
-      'incorrect fingerprint'
-    );
-    await expectAsync(result).toBeRejectedWithError(
-      Error,
-      /Fingerprint mismatch/
-    );
-  });
-
   // Make a certificate.
-  const {privateKey, publicKey} = forge.pki.rsa.generateKeyPair(1024);
+  const {privateKey, publicKey} = forge.pki.rsa.generateKeyPair(2048);
   const cert = forge.pki.createCertificate();
   cert.publicKey = publicKey;
   cert.sign(privateKey); // Self-signed cert
@@ -51,40 +39,33 @@ describe('fetchWithPin', () => {
     .digest()
     .toString('binary');
 
-  it('throws on pin mismatch (local)', async () => {
-    const server = tls.createServer({key: keyPem, cert: certPem});
-    await new Promise<void>(fulfill => server.listen(0, fulfill));
-
-    const address = server.address() as AddressInfo;
-    const req = {
-      url: `https://localhost:${address.port}/foo`,
-      method: 'GET',
-    };
-
-    // Fail if the TLS handshake completes.
-    server.on('secureConnection', fail);
-
-    const clientClosed = new Promise(fulfill =>
-      server.on('connection', socket => socket.on('close', fulfill))
+  it('refuses to send HTTP data to a server with the wrong pin', async () => {
+    const server = https.createServer({key: keyPem, cert: certPem}, () =>
+      fail('HTTP reached a server with the wrong pin')
     );
-
-    const result = fetchWithPin(req, 'incorrect fingerprint');
-    await expectAsync(result).toBeRejectedWithError(
-      Error,
-      /Fingerprint mismatch/
-    );
-
-    // Don't stop the test until the client has closed the TCP socket.
-    await clientClosed;
+    await new Promise<void>(resolve => server.listen(0, '127.0.0.1', resolve));
+    const {port} = server.address() as AddressInfo;
+    try {
+      const result = fetchWithPin(
+        {url: `https://127.0.0.1:${port}/foo`, method: 'POST', body: 'test'},
+        'incorrect fingerprint'
+      );
+      await expectAsync(result).toBeRejectedWithError(
+        Error,
+        /Fingerprint mismatch/
+      );
+    } finally {
+      await new Promise<void>(resolve => server.close(() => resolve()));
+    }
   });
 
   it('succeeds on pin match', async () => {
     const server = https.createServer({key: keyPem, cert: certPem});
-    await new Promise<void>(fulfill => server.listen(0, fulfill));
+    await new Promise<void>(fulfill => server.listen(0, '127.0.0.1', fulfill));
 
     const address = server.address() as AddressInfo;
     const req = {
-      url: `https://localhost:${address.port}/foo`,
+      url: `https://127.0.0.1:${address.port}/foo`,
       method: 'GET',
     };
     server.on('request', (incoming, response) => {
@@ -96,9 +77,13 @@ describe('fetchWithPin', () => {
     });
 
     const result = fetchWithPin(req, certSha256);
-    await expectAsync(result).toBeResolvedTo({
-      status: 200,
-      body: 'test test',
-    });
+    try {
+      await expectAsync(result).toBeResolvedTo({
+        status: 200,
+        body: 'test test',
+      });
+    } finally {
+      await new Promise<void>(resolve => server.close(() => resolve()));
+    }
   });
 });

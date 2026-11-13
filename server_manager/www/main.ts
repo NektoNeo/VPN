@@ -19,6 +19,7 @@ import * as i18n from '@outline/infrastructure/i18n';
 import {App} from './app';
 import {CloudAccounts} from './cloud_accounts';
 import {ManualServerRepository} from './manual_server';
+import {ManualServerStore} from './manual_server_store';
 import {AppRoot} from './ui_components/app-root';
 import {LanguageDef} from './ui_components/outline-language-picker';
 
@@ -142,7 +143,11 @@ document.addEventListener('WebComponentsReady', () => {
   new App(
     appRoot,
     version,
-    new ManualServerRepository('manualServers'),
+    new ManualServerRepository(
+      new ManualServerStore('manualServers', manualServerCipher, () => {
+        appRoot.showError(appRoot.localize('error-manual-server-storage'));
+      })
+    ),
     cloudAccounts
   ).start();
 });

@@ -14,7 +14,8 @@
 
 import type {IncomingMessage} from 'http';
 import * as https from 'https';
-import {TLSSocket} from 'tls';
+import {isIP} from 'net';
+import {connect} from 'tls';
 import {urlToHttpOptions} from 'url';
 
 import type {HttpRequest, HttpResponse} from '@outline/infrastructure/path_api';
@@ -23,34 +24,49 @@ export const fetchWithPin = async (
   req: HttpRequest,
   fingerprint: string
 ): Promise<HttpResponse> => {
+  const url = new URL(req.url);
+  if (url.protocol !== 'https:') {
+    throw new Error('Pinned requests require HTTPS');
+  }
+
+  // The server may have a self-signed certificate. Establish a fresh TLS
+  // connection and verify the configured SHA-256 pin before HTTP sees it.
   const response = await new Promise<IncomingMessage>((resolve, reject) => {
+    const host = url.hostname.replace(/^\[|\]$/g, '');
     const options: https.RequestOptions = {
-      ...urlToHttpOptions(new URL(req.url)),
+      ...urlToHttpOptions(url),
       method: req.method,
       headers: req.headers,
-      rejectUnauthorized: false, // Disable certificate chain validation.
+      createConnection: (_options, ready) => {
+        const socket = connect({
+          host,
+          port: Number(url.port || 443),
+          servername: isIP(host) ? undefined : host,
+          rejectUnauthorized: false,
+        });
+        const fail = (error: Error) => {
+          socket.destroy();
+          ready(error, undefined);
+        };
+        socket.once('error', fail);
+        socket.once('secureConnect', () => {
+          const peer = socket.getPeerCertificate();
+          const actual = peer.fingerprint256?.replace(/:/g, '');
+          if (
+            !actual ||
+            Buffer.from(actual, 'hex').toString('binary') !== fingerprint
+          ) {
+            fail(new Error('Fingerprint mismatch'));
+            return;
+          }
+          socket.removeListener('error', fail);
+          ready(null, socket);
+        });
+        // Returning the socket here would let HTTP send data before pinning.
+        return undefined;
+      },
     };
     const request = https.request(options, resolve).on('error', reject);
-
-    // Enforce certificate fingerprint match.
-    request.on('socket', (socket: TLSSocket) =>
-      socket.on('secureConnect', () => {
-        const certificate = socket.getPeerCertificate();
-        // Parse fingerprint in "AB:CD:EF" form.
-        const sha2hex = certificate.fingerprint256.replace(/:/g, '');
-        const sha2binary = Buffer.from(sha2hex, 'hex').toString('binary');
-        if (sha2binary !== fingerprint) {
-          request.emit(
-            'error',
-            new Error(
-              `Fingerprint mismatch: expected ${fingerprint}, not ${sha2binary}`
-            )
-          );
-          request.destroy();
-          return;
-        }
-      })
-    );
 
     if (req.body) {
       request.write(req.body);

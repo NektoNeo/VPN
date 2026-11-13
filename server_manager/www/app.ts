@@ -21,6 +21,10 @@ import * as semver from 'semver';
 import {DisplayDataAmount, displayDataAmountToBytes} from './data_formatting';
 import {filterOptions, getShortName} from './location_formatting';
 import {parseManualServerConfig} from './management_urls';
+import {
+  LAST_DISPLAYED_SERVER_STORAGE_KEY,
+  ManualServerStorageError,
+} from './manual_server_store';
 import type {AppRoot, ServerListEntry} from './ui_components/app-root';
 import {FeedbackDetail} from './ui_components/outline-feedback-dialog';
 import type {ServerView} from './ui_components/outline-server-view';
@@ -44,7 +48,7 @@ const MINUTES_TO_MILLISECONDS = 60 * 1000;
 const MAX_ACCESS_KEY_DATA_LIMIT_BYTES = 50 * 10 ** 9; // 50GB
 const CANCELLED_ERROR = new Error('Cancelled');
 const CHARACTER_TABLE_FLAG_SYMBOL_OFFSET = 127397;
-export const LAST_DISPLAYED_SERVER_STORAGE_KEY = 'lastDisplayedServer';
+export {LAST_DISPLAYED_SERVER_STORAGE_KEY} from './manual_server_store';
 
 // todo (#1311): we are referencing `@sentry/electron` which won't work for
 //               web_app. It's ok for now cuz we don't need to enable Sentry in
@@ -311,16 +315,15 @@ export class App {
             );
             const errorMessage = appRoot.localize('error-server-unreachable');
             this.appRoot.showManualServerError(errorTitle, errorMessage);
+          } else if (e instanceof ManualServerStorageError) {
+            this.appRoot.showError(
+              this.appRoot.localize('error-manual-server-storage')
+            );
           } else {
-            // TODO(alalama): with UI validation, this code path never gets executed. Remove?
-            let errorMessage = '';
-            if (e.message) {
-              errorMessage += `${e.message}\n`;
-            }
-            if (userInput) {
-              errorMessage += userInput;
-            }
-            appRoot.openManualInstallFeedback(errorMessage);
+            // A management URL in the original input or error is a credential.
+            appRoot.openManualInstallFeedback(
+              appRoot.localize('error-server-creation')
+            );
           }
         });
     });
@@ -508,8 +511,14 @@ export class App {
   }
 
   private async loadManualServers() {
-    for (const server of await this.manualServerRepository.listServers()) {
-      this.addServer(null, server);
+    try {
+      for (const server of await this.manualServerRepository.listServers()) {
+        this.addServer(null, server);
+      }
+    } catch {
+      this.appRoot.showError(
+        this.appRoot.localize('error-manual-server-storage')
+      );
     }
   }
 
@@ -1428,6 +1437,7 @@ export class App {
 
     // Don't let `ManualServerRepository.addServer` throw to avoid redundant error handling if we
     // are adding an existing server. Query the repository instead to treat the UI accordingly.
+    await this.manualServerRepository.listServers();
     const storedServer = this.manualServerRepository.findServer(serverConfig);
     if (storedServer) {
       this.appRoot.showNotification(
@@ -1444,7 +1454,7 @@ export class App {
       this.showServer(manualServer);
     } else {
       // Remove inaccessible manual server from local storage if it was just created.
-      manualServer.forget();
+      await manualServer.forget();
       console.error('Manual server installed but unreachable.');
       throw new UnreachableServerError();
     }
@@ -1530,8 +1540,15 @@ export class App {
       confirmationTitle,
       confirmationText,
       confirmationButton,
-      () => {
-        serverToForget.forget();
+      async () => {
+        try {
+          await serverToForget.forget();
+        } catch {
+          this.appRoot.showError(
+            this.appRoot.localize('error-manual-server-storage')
+          );
+          return;
+        }
         this.removeServer(serverId);
         this.showIntro();
         this.appRoot.showNotification(

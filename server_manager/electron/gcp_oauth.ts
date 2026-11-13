@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-import {AddressInfo} from 'net';
+import {randomBytes} from 'crypto';
 
 import * as electron from 'electron';
 import * as express from 'express';
@@ -69,29 +69,36 @@ async function verifyGrantedScopes(
 export function runOauth(): OauthSession {
   // Start web server to handle OAuth callback
   const app = express();
-  const server = app.listen();
-  const port = (server.address() as AddressInfo).port;
-
-  // Open browser to OAuth URL
-  const oAuthClient = new OAuth2Client(
-    OAUTH_CONFIG.client_id,
-    OAUTH_CONFIG.client_secret,
-    `http://localhost:${port}${REDIRECT_PATH}`
-  );
-  const oAuthUrl = oAuthClient.generateAuthUrl({
-    access_type: 'offline',
-    scope: OAUTH_CONFIG.scopes,
-  });
-  electron.shell.openExternal(oAuthUrl);
-
-  // Handle OAuth redirect callback
+  const state = randomBytes(32).toString('hex');
   let isCancelled = false;
+  let consumed = false;
+  const server = app.listen(0, '127.0.0.1');
   const rejectWrapper = {reject: (_error: Error) => {}};
   const tokenPromise = new Promise<string>((resolve, reject) => {
     rejectWrapper.reject = reject;
-    app.get(
-      REDIRECT_PATH,
-      async (request: express.Request, response: express.Response) => {
+    server.once('error', reject);
+    server.once('listening', () => {
+      const address = server.address();
+      if (!address || typeof address === 'string' || isCancelled) {
+        server.close();
+        reject(new Error('OAuth callback unavailable'));
+        return;
+      }
+      const oAuthClient = new OAuth2Client(
+        OAUTH_CONFIG.client_id,
+        OAUTH_CONFIG.client_secret,
+        `http://127.0.0.1:${address.port}${REDIRECT_PATH}`
+      );
+      app.get(REDIRECT_PATH, async (request, response) => {
+        if (request.query.state !== state) {
+          response.sendStatus(403);
+          return;
+        }
+        if (consumed) {
+          response.sendStatus(429);
+          return;
+        }
+        consumed = true;
         if (request.query.error) {
           if (request.query.error === 'access_denied') {
             isCancelled = true;
@@ -105,12 +112,18 @@ export function runOauth(): OauthSession {
               )
             );
           }
+        } else if (typeof request.query.code !== 'string') {
+          response.sendStatus(400);
+          reject(new Error('Missing authorization code'));
         } else {
           try {
             const getTokenResponse = await oAuthClient.getToken(
-              request.query.code as string
+              request.query.code
             );
-            if (getTokenResponse.res.status / 100 === 2) {
+            if (
+              getTokenResponse.res.status >= 200 &&
+              getTokenResponse.res.status < 300
+            ) {
               const scopesValid = await verifyGrantedScopes(
                 oAuthClient,
                 getTokenResponse.tokens.access_token
@@ -143,7 +156,7 @@ export function runOauth(): OauthSession {
                 )
               );
             }
-          } catch (error) {
+          } catch {
             response.send(responseHtml('Authentication failed'));
             reject(
               new Error(
@@ -153,8 +166,17 @@ export function runOauth(): OauthSession {
           }
         }
         server.close();
-      }
-    );
+      });
+      const oAuthUrl = oAuthClient.generateAuthUrl({
+        state,
+        access_type: 'offline',
+        scope: OAUTH_CONFIG.scopes,
+      });
+      electron.shell.openExternal(oAuthUrl).catch(error => {
+        server.close();
+        reject(error);
+      });
+    });
   });
 
   return {
