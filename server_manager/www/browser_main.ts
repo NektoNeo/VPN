@@ -12,6 +12,12 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+import {browserManualServerCipher} from './browser_manual_server_cipher';
+
+Object.defineProperty(window, 'manualServerCipher', {
+  value: browserManualServerCipher,
+});
+
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 (window as any).fetchWithPin = (
   _request: HttpRequest,

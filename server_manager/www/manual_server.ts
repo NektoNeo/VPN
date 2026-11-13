@@ -15,6 +15,8 @@
 import {hexToString} from '@outline/infrastructure/hex_encoding';
 
 import {makePathApiClient} from './fetcher';
+import {ManualServerStore, newManualServerId} from './manual_server_store';
+import type {StoredManualServer} from '../model/manual_server_storage';
 import {ShadowboxServer} from './shadowbox_server';
 import * as server from '../model/server';
 
@@ -22,7 +24,7 @@ class ManualServer extends ShadowboxServer implements server.ManualServer {
   constructor(
     id: string,
     private manualServerConfig: server.ManualServerConfig,
-    private forgetCallback: Function
+    private forgetCallback: () => Promise<void>
   ) {
     super(id);
     const fingerprint = hexToString(manualServerConfig.certSha256 ?? '');
@@ -35,83 +37,72 @@ class ManualServer extends ShadowboxServer implements server.ManualServer {
     return this.manualServerConfig.certSha256;
   }
 
-  forget(): void {
-    this.forgetCallback();
+  forget(): Promise<void> {
+    return this.forgetCallback();
   }
 }
 
 export class ManualServerRepository implements server.ManualServerRepository {
   private servers: server.ManualServer[] = [];
 
-  constructor(private storageKey: string) {
-    this.loadServers();
+  private ready: Promise<void>;
+  private writes: Promise<unknown> = Promise.resolve();
+
+  constructor(private store: ManualServerStore) {
+    this.ready = this.store.load().then(records => {
+      this.servers = records.map(record => this.createServer(record));
+    });
+  }
+
+  private update<T>(operation: () => Promise<T>): Promise<T> {
+    const next = this.writes.then(() => this.ready).then(operation);
+    this.writes = next.catch(() => {});
+    return next;
   }
 
   addServer(config: server.ManualServerConfig): Promise<server.ManualServer> {
-    const existingServer = this.findServer(config);
-    if (existingServer) {
-      console.debug('server already added');
-      return Promise.resolve(existingServer);
-    }
-    const server = this.createServer(config);
-    this.servers.push(server);
-    this.storeServers();
-    return Promise.resolve(server);
+    return this.update(async () => {
+      const existing = this.findServer(config);
+      if (existing) {
+        return existing;
+      }
+      const record = {...config, id: newManualServerId()};
+      await this.store.save([...this.records(), record]);
+      const added = this.createServer(record);
+      this.servers.push(added);
+      return added;
+    });
   }
 
-  listServers(): Promise<server.ManualServer[]> {
-    return Promise.resolve(this.servers);
+  async listServers(): Promise<server.ManualServer[]> {
+    await this.ready;
+    return this.servers.slice();
   }
 
   findServer(
     config: server.ManualServerConfig
   ): server.ManualServer | undefined {
     return this.servers.find(
-      server => server.getManagementApiUrl() === config.apiUrl
+      item => item.getManagementApiUrl() === config.apiUrl
     );
   }
 
-  private loadServers() {
-    this.servers = [];
-    const serversJson = localStorage.getItem(this.storageKey);
-    if (serversJson) {
-      try {
-        const serverConfigs = JSON.parse(serversJson);
-        this.servers = serverConfigs.map(
-          (config: server.ManualServerConfig) => {
-            return this.createServer(config);
-          }
+  private records(): StoredManualServer[] {
+    return this.servers.map(item => ({
+      id: item.getId(),
+      apiUrl: item.getManagementApiUrl(),
+      certSha256: item.getCertificateFingerprint(),
+    }));
+  }
+
+  private createServer(record: StoredManualServer) {
+    return new ManualServer(record.id, record, () =>
+      this.update(async () => {
+        await this.store.save(
+          this.records().filter(item => item.id !== record.id)
         );
-      } catch (e) {
-        console.error('Error creating manual servers from localStorage');
-      }
-    }
-  }
-
-  private storeServers() {
-    const serverConfigs: server.ManualServerConfig[] = this.servers.map(
-      server => {
-        return {
-          apiUrl: server.getManagementApiUrl(),
-          certSha256: server.getCertificateFingerprint(),
-        };
-      }
+        this.servers = this.servers.filter(item => item.getId() !== record.id);
+      })
     );
-    localStorage.setItem(this.storageKey, JSON.stringify(serverConfigs));
-  }
-
-  private createServer(config: server.ManualServerConfig) {
-    const server = new ManualServer(`manual:${config.apiUrl}`, config, () => {
-      this.forgetServer(server);
-    });
-    return server;
-  }
-
-  private forgetServer(serverToForget: server.ManualServer): void {
-    const apiUrl = serverToForget.getManagementApiUrl();
-    this.servers = this.servers.filter(server => {
-      return apiUrl !== server.getManagementApiUrl();
-    });
-    this.storeServers();
   }
 }

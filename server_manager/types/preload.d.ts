@@ -47,3 +47,5 @@ declare function bringToFront(): void;
 
 // From base.webpack.js.
 declare const outline: {gcpAuthEnabled: boolean};
+
+declare const manualServerCipher: import('../model/manual_server_storage').ManualServerCipher;

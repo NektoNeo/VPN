@@ -30,14 +30,9 @@ const STRINGS_FILENAME = 'strings.xml';
 const XML_STRING_ID_PROPERTY = '@name';
 const XML_TEXT_CONTENT = '#';
 
-function escapeXmlCharacters(str) {
-  // TODO: This is not a safe way to escape XML characters. We should do it properly.
-  return str
-    .replace(/"/g, '\\"')
-    .replace(/'/g, "\\'")
-    .replace(/</g, '\\<')
-    .replace(/>/g, '\\>;')
-    .replace(/&/g, '\\&');
+// xmlbuilder2 escapes XML text. Android parses backslashes and quotes afterwards.
+function escapeAndroidString(str) {
+  return str.replace(/[\\'"]/g, '\\$&');
 }
 
 function getNativeLocale(locale) {
@@ -83,7 +78,7 @@ export async function writeMessages(path, messages) {
   const output = Object.entries(messages).reduce((acc, [key, value]) => {
     acc.push({
       [XML_STRING_ID_PROPERTY]: key,
-      [XML_TEXT_CONTENT]: escapeXmlCharacters(value),
+      [XML_TEXT_CONTENT]: escapeAndroidString(value),
     });
     return acc;
   }, []);

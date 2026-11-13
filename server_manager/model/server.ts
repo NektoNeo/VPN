@@ -109,7 +109,7 @@ export interface Server {
 export interface ManualServer extends Server {
   getCertificateFingerprint(): string | undefined;
 
-  forget(): void;
+  forget(): Promise<void>;
 }
 
 // Error thrown when monitoring an installation that the user canceled.

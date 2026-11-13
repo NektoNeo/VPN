@@ -78,3 +78,11 @@ contextBridge.exposeInMainWorld('runGcpOauth', gcp_oauth.runOauth);
 contextBridge.exposeInMainWorld('bringToFront', () => {
   return ipcRenderer.send('bring-to-front');
 });
+
+contextBridge.exposeInMainWorld('manualServerCipher', {
+  seal: (
+    entries: import('../model/manual_server_storage').StoredManualServer[]
+  ) => ipcRenderer.invoke('seal-manual-servers', entries),
+  open: (ciphertext: string) =>
+    ipcRenderer.invoke('open-manual-servers', ciphertext),
+});

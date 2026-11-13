@@ -360,6 +360,10 @@
     "message": "Enabled",
     "description": "This string appears across the application as a drop-down menu option. It allows the user to activate features."
   },
+  "error_manual_server_storage": {
+    "message": "Cannot access secure storage for manual servers. Unlock your operating system keyring or enable browser storage, then reopen Outline Manager. Your saved configuration has been preserved.",
+    "description": "Shown when Outline Manager cannot read or safely write manual server credentials."
+  },
   "error_connectivity": {
     "message": "We're having trouble connecting to your DigitalOcean account. This is sometimes a temporary problem with DigitalOcean or with your internet connection. If retrying doesn't work, logging into DigitalOcean again should fix the problem.",
     "description": "This string appears in a dialog as a paragraph. The dialog is shown when an operation on a DigitalOcean server fails due to connectivity issues. The dialog displays buttons that allow the user to retry the operation. DigitalOcean is a cloud server provider name and should not be translated."

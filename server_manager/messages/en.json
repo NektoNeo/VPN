@@ -39,6 +39,7 @@
   "disconnect": "Disconnect",
   "done": "Done",
   "enabled": "Enabled",
+  "error-manual-server-storage": "Cannot access secure storage for manual servers. Unlock your operating system keyring or enable browser storage, then reopen Outline Manager. Your saved configuration has been preserved.",
   "error-connectivity": "We're having trouble connecting to your DigitalOcean account. This is sometimes a temporary problem with DigitalOcean or with your internet connection. If retrying doesn't work, logging into DigitalOcean again should fix the problem.",
   "error-connectivity-title": "Connection problem",
   "error-do-account-info": "Failed to get DigitalOcean account information",

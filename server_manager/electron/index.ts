@@ -23,6 +23,7 @@ import {autoUpdater} from 'electron-updater';
 
 import {fetchWithPin} from './fetch';
 import * as menu from './menu';
+import {registerManualServerCipher} from './manual_server_cipher';
 
 // Injected by webpack during build
 declare const SENTRY_DSN: string | undefined;
@@ -260,6 +261,8 @@ function main() {
       mainWindow.webContents.send(UPDATE_DOWNLOADED_EVENT);
     }
   });
+
+  registerManualServerCipher(() => mainWindow);
 
   // Proxy for fetch calls that require fingerprint pinning.
   ipcMain.handle(
